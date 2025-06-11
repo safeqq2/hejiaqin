@@ -29,7 +29,7 @@ from homeassistant.exceptions import HomeAssistantError, Unauthorized
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.event import async_track_time_interval
 
-from .hejiaqin import DNSUpdateManger, get_hejiaqin_device, device_filter, async_get_devices_list
+from .hejiaqin import get_hejiaqin_device, device_filter, async_get_devices_list
 # from .common import TuyaDevice, async_config_entry_by_device_id
 from .config_flow import ENTRIES_VERSION
 from .const import (
@@ -55,16 +55,12 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
 UNSUB_LISTENER = "unsub_listener"
-
 RECONNECT_INTERVAL = timedelta(seconds=60)
-
 # CONFIG_SCHEMA = config_schema()
 
 CONF_DP = "dp"
 CONF_VALUE = "value"
-
 
 SERVICE_SET_DP = "set_dp"
 SERVICE_SET_DP_SCHEMA = vol.Schema(
@@ -80,64 +76,34 @@ async def async_setup(hass: HomeAssistant, config: dict):
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][CONFIG] = {}
     hass.data[DOMAIN][CONF_RELOAD_FLAG] = []
-
-
     async def _handle_set_dp(event):
         scan_interval = event.data[CONF_SCAN_INTERVAL]
         _LOGGER.debug("scan_interval: ", scan_interval)
-
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up LocalTuya integration from a config entry."""
-    # if entry.version < ENTRIES_VERSION:
-    #     _LOGGER.debug(
-    #         "Skipping setup for entry %s since its version (%s) is old",
-    #         entry.entry_id,
-    #         entry.version,
-    #     )
-    #     return
-
     _LOGGER.debug(entry.entry_id)
     _LOGGER.debug(entry.data)
     _LOGGER.debug(hass.data[DOMAIN][CONF_RELOAD_FLAG])
     if entry.entry_id in hass.data[DOMAIN][CONF_RELOAD_FLAG]:
         await async_hejiaqin_reload_entry(hass, entry)
-
-    # dns_update = DNSUpdateManger(hass)
     config = {
         SL_DEVICES: list(),
     }
     hass.data[DOMAIN][CONFIG][entry.entry_id] = config
     hass.data[DOMAIN][CONF_SCAN_INTERVAL] = entry.data[CONF_USER_INPUT][CONF_SCAN_INTERVAL]
-    # hass.data[DOMAIN][CONF_DNS_UPDATE] = dns_update
-    # dns_update.dns.set_domain(PLUG_DOMAIN)
-    # dns_update.devices = config[SL_DEVICES]
-
+    
     async def setup_entities(device_ids):
         for dev_id in device_ids:
             device_config = entry.data[CONF_DEVICES][dev_id]
             device = await get_hejiaqin_device(hass, device_config)
             if device is None: continue
             config[SL_DEVICES].append(device)
-            # await device.async_setup()
-
-
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_setup(entry, platform)
-                for platform in ['switch','sensor']
-            ]
-        )
-
-        # await dns_update.coordinator.async_config_entry_first_refresh()
+        await hass.config_entries.async_forward_entry_setups(entry, ['switch', 'sensor'])
         for device in config[SL_DEVICES]:
             await device.async_setup()
-        # await config_update.coordinator.async_config_entry_first_refresh()
-        #await hass.config_entries.async_reload(entry.entry_id)
-
-    
     hass.async_create_task(setup_entities(entry.data[CONF_DEVICES].keys()))
     return True
 
@@ -150,12 +116,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     for device in config[SL_DEVICES]:
         await device.update_manager.coordinator.async_shutdown()
     unload_ok = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(entry, component)
-                for component in ['switch','sensor']
-            ]
-        )
+        await hass.config_entries.async_forward_entry_unload(entry, ['switch', 'sensor'])
     )
     if entry.entry_id not in hass.data[DOMAIN][CONF_RELOAD_FLAG]:
         hass.data[DOMAIN][CONF_RELOAD_FLAG].append(entry.entry_id)
@@ -165,17 +126,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_hejiaqin_reload_entry(hass: HomeAssistant, entry: ConfigEntry):
     api_key = entry.data[CONF_USER_INPUT][CONF_API_KEY]
-    error, resp = await async_get_devices_list(hass, api_key)
+    error, resp, rapi_key = await async_get_devices_list(hass, api_key, None, None)
     if error is not None:
-        pass
-    
+        pass    
     update_flag = False
     r_json = resp.json()
     devices_list = r_json.get(CONF_DEVICES, list())
     devices = device_filter(devices_list, api_key)
     if len(devices) != len(entry.data[CONF_DEVICES]):
         update_flag = True
-
     if update_flag:
         devices.update(entry.data[CONF_DEVICES])
         new_data = {**entry.data}

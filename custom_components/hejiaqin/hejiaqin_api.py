@@ -8,6 +8,8 @@ import uuid
 import time
 import logging
 import textwrap
+import httpx
+
 from abc import ABC
 
 from homeassistant import config_entries
@@ -137,19 +139,96 @@ class HTTPRequest(ABC):
 
 
 class CloudAPI(HTTPRequest):
-    def __init__(self, hass):
+    def __init__(self, hass, tel, pwd):
+        self.hjq_token = None
+        self.pass_id = None
+        self.tel = tel
+        self.pwd = pwd
+        self.apikey = None
         self.hass = hass
         # self.session = requests.Session()
         self.session = get_session(self.hass)
 
+    async def get_hjqtoken_passid(self):
+        if self.tel == None or self.pwd == None:
+            return "", ""
+        if self.hjq_token and self.pass_id:
+            return self.hjq_token, self.pass_id
+        api = "https://base.hjq.komect.com/base/user/passwdLogin"
+        body = json.dumps(
+            {
+                "virtualAuthdata": self.get_md5(self.pwd),
+                "authType": "10",
+                "userAccount": self.tel,
+                "authdata": self.get_sha1("fetion.com.cn:" + self.pwd),
+            }
+        )
+        headers = {"Content-Type": "application/json"}
+        async with aiohttp.ClientSession() as client:
+            resp = await client.post(api, data=body, headers=headers)
+        _LOGGER.debug(resp)
+        _LOGGER.debug(await resp.json())
+        if "Set-Cookie" not in resp.headers:
+            return "", ""
+        self.hjq_token = resp.headers["Set-Cookie"].split("=")[1].split(";")[0]
+        self.pass_id = (await resp.json())["data"]["passId"]
+        return self.hjq_token, self.pass_id
+
+    async def get_api_key(self):
+        if self.hjq_token == None or self.pass_id == None:
+            await self.get_hjqtoken_passid()
+        if self.hjq_token == None or self.pass_id == None:
+            _LOGGER.debug("Get token faid!")
+            return ""
+        api = "https://andlink.komect.com/espapi/cloud/json/loginByApp?cloudName=CMCC&keyType=0"
+        headers = {"API_KEY": self.hjq_token + ":590505:15"}
+        _LOGGER.debug(headers)
+        async with httpx.AsyncClient(verify=False) as client:
+            resp = await client.get(api, headers=headers)
+            self.apikey = resp.json()["key"]
+            _LOGGER.debug(resp.json())
+            return self.apikey
+        return ""
+        
+    async def is_valid_json(self, json_string):
+        try:
+            json.loads(json_string)
+            return True
+        except ValueError:
+            return False
+
     async def async_get_devices_list(self, api_key):
+        if api_key == None or api_key == "None":
+            api_key = await self.get_api_key()
+        else:
+#            spstr = json.dumps(api_key)
+            if await self.is_valid_json(api_key):
+                spstr = json.loads(api_key)            
+                self.tel = spstr["tel"]
+                self.pwd = spstr["pwd"]
+                api_key = await self.get_api_key()              
+        if api_key == "":
+            return "Login token faid!", ""
         headers = HEADERS.copy()
         headers[HEAD_AUTH] = api_key
-        # _LOGGER.debug(headers)
+#        _LOGGER.debug(headers)
         resp = await self.async_make_request_by_requests("GET", DEVICES_URL, headers=headers)
-        # _LOGGER.debug(resp.headers)
-        return resp
+        _LOGGER.debug(resp.headers)
+        _LOGGER.debug(resp.json())
+        return resp, api_key
         #https://andlink.komect.com/espapi/v3/cloud/json/family/devices/parameters/get?deviceId=CMCC-590384-xxxxxx
+        
+    @staticmethod
+    def get_md5(value):
+        md5_hash = hashlib.md5()
+        md5_hash.update(value.encode("utf-8"))
+        return md5_hash.hexdigest()
+
+    @staticmethod
+    def get_sha1(value):
+        sha1_hash = hashlib.sha1()
+        sha1_hash.update(value.encode("utf-8"))
+        return sha1_hash.hexdigest()
 
 class PlugAPI(HTTPRequest):
 

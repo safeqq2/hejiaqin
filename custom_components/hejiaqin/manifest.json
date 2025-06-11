@@ -1,15 +1,14 @@
 {
     "domain": "hejiaqin",
-    "name": "HeJiaQin integration",
-    "codeowners": ["@cx3Y"],
+    "name": "HeJiaQin",
+    "codeowners": ["@safeqq2"],
     "config_flow": true,
     "dependencies": ["http", "network"],
-    "documentation": "https://github.com/cx3Y/hejiaqin",
-    "integration_type": "device",
+    "documentation": "https://github.com/safeqq2/hejiaqin",
     "iot_class": "cloud_polling",
-    "issue_tracker": "https://github.com/cx3Y/hejiaqin/issues",
+    "issue_tracker": "https://github.com/safeqq2/hejiaqin/issues",
     "requirements": [
     ],
-    "version": "0.1.1"
+    "version": "0.1.2"
 }
   

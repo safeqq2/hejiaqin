@@ -79,10 +79,10 @@ async def attempt_connection(sunlogin, method = 1, *args):
 
     res = await sunlogin.async_get_devices_list()
     if res != "ok":
-        _LOGGER.error("Cloud API get_devices_list failed: %s", res)
+        _LOGGER.warning("Cloud API get_devices_list failed: %s", res)
         return {"reason": "device_list_failed", "msg": res}
 
-    _LOGGER.info("Cloud API connection succeeded.")
+    _LOGGER.warning("Cloud API connection succeeded.")
 
     return {}
 
@@ -107,25 +107,31 @@ class HejiaqinConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         errors = {}
         placeholders = {}
-
+        _LOGGER.warning("start async_step_user")
         if user_input is not None:
             api_key = user_input.get(CONF_API_KEY)
             api_key = api_key.strip()
-            user_input[CONF_API_KEY] = api_key
-            error, resp = await async_get_devices_list(self.hass, api_key)
+            user_input[CONF_API_KEY] = api_key     
+            error, resp, rapi_key = await async_get_devices_list(self.hass, api_key, None, None)         
+#            error, resp = await async_get_devices_list(self.hass, api_key)
             if error is None:
                 r_json = resp.json()
                 devices = r_json.get(CONF_DEVICES, list())
                 if len(devices) > 0:
+                    user_input[CONF_API_KEY] = rapi_key
+                    api_key = rapi_key
+                    _LOGGER.warning("Get ApiKey ret: " + rapi_key)
                     self.device_list = devices
-                    return await self._create_entry(user_input)
-                
+                    return await self._create_entry(user_input)                    
+                _LOGGER.warning("msg: unknown")
                 errors["base"] = 'unknown'
                 placeholders = {"msg": "no devices"}
             else:
+                _LOGGER.warning("msg: " + error)
                 errors["base"] = 'unknown'
                 placeholders = {"msg": error}
 
+        _LOGGER.warning("end async_step_user")
         return self.async_show_form(
             step_id="user",
             data_schema=CLOUD_SETUP_SCHEMA,
@@ -155,7 +161,7 @@ class HejiaqinConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_DEVICES: devices, 
         }
         return self.async_create_entry(
-            title='hejiaqin',
+            title=user_input[CONF_API_KEY],
             data=entry,
         )
         
@@ -182,10 +188,15 @@ class HejiaqinOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, old_scan_interval)
             self.hass.data[DOMAIN][CONF_SCAN_INTERVAL] = scan_interval
-            
-            for device in self.hass.data[DOMAIN][SL_DEVICES][self.config_entry.entry_id]:
-                await device.async_set_scan_interval(scan_interval)
-            
+#            _LOGGER.warning(self.hass.data[DOMAIN])
+#            _LOGGER.warning(self.hass.data[DOMAIN]['configuration'])
+#            _LOGGER.warning(self.hass.data[DOMAIN]['configuration'][self.config_entry.entry_id])
+#            _LOGGER.warning(self.config_entry.entry_id)
+#            for device in self.hass.data[DOMAIN][SL_DEVICES][self.config_entry.entry_id]:
+#            tdevices = self.hass.data[DOMAIN]['configuration'][self.config_entry.entry_id]['sunlogin_devices']
+            for device in self.hass.data[DOMAIN]['configuration'][self.config_entry.entry_id]['sunlogin_devices']:
+#                _LOGGER.warning(device)
+                await device.async_set_scan_interval(scan_interval)            
             return self.async_create_entry(title="", data={})
 
         return self.async_show_form(
@@ -196,12 +207,12 @@ class HejiaqinOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_add_device(self, user_input=None):
         scan_interval = user_input.get(CONF_SCAN_INTERVAL)
-        _LOGGER.debug("scan_interval: ", scan_interval)
+        _LOGGER.warning("scan_interval: ", scan_interval)
 
 
     async def async_step_yaml_import(self, user_input=None):
         """Manage YAML imports."""
-        _LOGGER.error(
+        _LOGGER.warning(
             "Configuration via YAML file is no longer supported by this integration."
         )
         # if user_input is not None:

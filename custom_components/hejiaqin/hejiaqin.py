@@ -14,7 +14,7 @@ import async_timeout
 import aiohttp
 from .hejiaqin_api import CloudAPI, PlugAPI
 # from .fake_data import GET_PLUG_ELECTRIC_FAKE_DATA_P8, GET_PLUG_STATUS_FAKE_DATA_P8
-from .dns_api import DNS
+# from .dns_api import DNS
 # from .sunlogin_api import PlugAPI_V2 as PlugAPI
 from datetime import timedelta, datetime, timezone
 
@@ -136,11 +136,12 @@ SLOT_X_WITH_ELECTRIC = ELECTRIC_ENTITY + SLOT_X_WITHOUT_ELECTRIC
 async def async_request_error_process(func, *args):
     error = None
     resp = None
+    rapi_key = None
     try:
-        resp = await func(*args)
+        resp, rapi_key = await func(*args)
     except requests.exceptions.ConnectionError:
         error = "Request failed, status ConnectionError"
-        return error, resp
+        return error, resp, rapi_key
     
     if not resp.ok:
         try: 
@@ -149,26 +150,24 @@ async def async_request_error_process(func, *args):
             error = "Response can't cover to JSON"
             return error, resp
         error = r_json.get('error', 'unkown')
-        return error, resp
+        return error, resp, rapi_key
     
     r_json = resp.json()
     if  r_json.get('resultCode', -1) != 0:
         error = r_json.get('resultCodeDesc', 'unkown')
-        return error, resp
-    
-    return error, resp
+        return error, resp, rapi_key   
+    return error, resp, rapi_key
 
-async def async_get_devices_list(hass, api_key):
-    api = CloudAPI(hass)
-    error, resp = await async_request_error_process(api.async_get_devices_list, api_key)
-    return error, resp
+async def async_get_devices_list(hass, api_key, tel, pwd):
+    api = CloudAPI(hass, tel, pwd)
+    error, resp, rapi_key = await async_request_error_process(api.async_get_devices_list, api_key)
+    return error, resp, rapi_key
 
 def device_filter(device_list, api_key):
     devices = dict()
     for dev in device_list:
         device_type = dev.get('type', 'unknow')
         device_id = dev.get('id')
-
         if device_type is not None and device_id is not None: #and dev.get('connected', True)
             dev[CONF_API_KEY] = api_key
             devices[device_id] = dev
@@ -178,6 +177,7 @@ def device_filter(device_list, api_key):
 async def get_hejiaqin_device(hass, config):
     # model = config.get(CONF_DEVICE_MODEL)
     type_id = config.get(CONF_DEVICE_TYPE)
+#    _LOGGER.warning(type_id)
     if type_id == 590384:
         return X1S(hass, config)
     elif type_id == 590505:
@@ -421,12 +421,13 @@ class Plug(HejiaqinDevice, ABC):
 
     async def async_set_scan_interval(self, seconds):
         if self.status('remote') or self.status('remote') is None:
-            seconds = max(seconds, 60)
-        else:
             seconds = max(seconds, 10)
+        else:
+            seconds = max(seconds, 60)
         scan_interval = timedelta(seconds=seconds)
-        self.coordinator.update_interval = scan_interval
-        self.coordinator.async_set_updated_data(data=self._status)
+#        _LOGGER.warning(self.update_manager.coordinator)
+        self.update_manager.coordinator.update_interval = scan_interval
+        self.update_manager.coordinator.async_set_updated_data(data=self._status)
         return seconds
     
     async def async_update_fw_version(self, r_json):
@@ -537,7 +538,7 @@ class X1S(Plug):
 
 class SP5F_CNA(Plug):
 
-    def __init__(self, hass, config):
+    def __init__(self, hass, config):       
         self.hass = hass
         self.config = config
         self.sn = config.get(CONF_DEVICE_SN)
@@ -551,6 +552,9 @@ class SP5F_CNA(Plug):
         _LOGGER.debug(self.api_key)
         _LOGGER.debug(self.api.api_key)
         self.update_manager = P1UpdateManager(self)
+#        _LOGGER.warning(self)
+#        _LOGGER.warning(hass)
+#        _LOGGER.warning(config)
     
     @property
     def manufacturer(self):
@@ -847,27 +851,27 @@ class P2UpdateManager(HejiaqinUpdateManager):
             raise requests.exceptions.ConnectionError
         return status       
 
-class DNSUpdateManger():
+#class DNSUpdateManger():
 
-    refresh_ttl = timedelta(hours=12)
-    server = 'ip33'
+#    refresh_ttl = timedelta(hours=12)
+#    server = 'ip33'
 
-    def __init__(self, hass):
-        self.hass = hass
-        self.dns = DNS(hass, self.server)
-        self.devices = list()
-        self.coordinator = DataUpdateCoordinator(
-            self.hass,
-            _LOGGER,
-            name=f"DNS Update (query at {self.server})",
-            update_method=self.dns.async_update,
-            update_interval=self.refresh_ttl,
-        )
-        self.coordinator.async_add_listener(self.nop)
+#    def __init__(self, hass):
+#        self.hass = hass
+#        self.dns = DNS(hass, self.server)
+#        self.devices = list()
+#        self.coordinator = DataUpdateCoordinator(
+#            self.hass,
+#            _LOGGER,
+#            name=f"DNS Update (query at {self.server})",
+#            update_method=self.dns.async_update,
+#            update_interval=self.refresh_ttl,
+#        )
+#        self.coordinator.async_add_listener(self.nop)
 
-    def nop(self):
-        for device in self.devices:
-            if device.api._inject_dns:
-                device.api._inject_dns = True
+#    def nop(self):
+#        for device in self.devices:
+#            if device.api._inject_dns:
+#                device.api._inject_dns = True
 
   

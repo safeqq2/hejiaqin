@@ -1,6 +1,9 @@
 """Constants for sunlogin integration."""
 
 DOMAIN = "hejiaqin"
+PACKAGE_NAME = "custom_components.hejiaqin"
+VERSION = "0.1.2"
+VERSION_STORAGE = 1
 CLOUD_DATA = "cloud_data"
 
 # Platforms in this list must support config flows
