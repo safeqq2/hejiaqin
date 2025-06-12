@@ -265,8 +265,8 @@
         },
         "step": {
             "user": {
-                "title": "登录",
-                "description": "请输入API_KEY",
+                "title": "加载信息",
+                "description": "请输入'API_KEY'或者用户名密码登录大括号：\"mode\": \"user\", \"tel\": \"13000000000\", \"pwd\": \"00000000\"",
                 "menu_options": {
                     "local": "使用IP添加设备",
                     "password": "密码登录",
@@ -315,7 +315,7 @@
     "options": {
         "step": {
             "init": {
-                "title": "向日葵配置",
+                "title": "请设置扫描轮询时间",
                 "description": "请选择所需的操作。",
                 "data": {
                     "add_device": "Add a new device",
